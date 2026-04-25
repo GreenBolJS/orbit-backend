@@ -49,6 +49,7 @@ ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:8080",
     "https://orbit-your-career-compass.daksh25chawla.workers.dev",
+    "chrome-extension://imjndcgbfadlddlapngjhnbofminddbj",
     FRONTEND_URL,
 ]
 
