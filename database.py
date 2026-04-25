@@ -100,9 +100,8 @@ def clear_matches() -> int:
     # Count before deleting
     count_result = client.table("matches").select("id", count="exact").execute()
     count = count_result.count or 0
-    # Delete all matches by using gt with a timestamp that will match nothing real
-    # Actually, just delete without any filter - this deletes everything
-    result = client.table("matches").delete().neq("id", "").execute()
+    # Delete all matches using a dummy UUID that doesn't exist
+    result = client.table("matches").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
     logger.info(f"[Orbit] Cleared {count} matches from database")
     return count
 

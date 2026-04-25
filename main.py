@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
+from supabase import create_client
 
 import database
 import agent
@@ -17,12 +18,17 @@ from schemas import (
     RunAgentResponse,
     HealthResponse,
     DismissResponse,
-    ClearResponse,
     ChatSyncRequest,
     ChatSyncResponse,
 )
 
 load_dotenv()
+
+# ─── Supabase ───────────────────────────────────────────────────────────────────
+
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ─── Logging ────────────────────────────────────────────────────────────────────
 
@@ -152,16 +158,12 @@ async def dismiss_match(match_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.delete("/matches/clear", response_model=ClearResponse)
+@app.delete("/matches/clear")
 async def clear_matches():
     try:
-        deleted_count = database.clear_matches()
-        return ClearResponse(
-            message="All matches cleared",
-            deleted=deleted_count > 0
-        )
+        supabase.table("matches").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+        return {"message": "All matches cleared", "deleted": true}
     except Exception as e:
-        logger.error(f"[Orbit] /matches/clear error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
