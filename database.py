@@ -3,6 +3,7 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 from typing import Optional
 import logging
+from datetime import datetime, timedelta
 
 load_dotenv()
 
@@ -110,30 +111,14 @@ def delete_old_matches(days: int = 7) -> int:
     """Delete matches older than N days. Returns count deleted."""
     client = get_client()
     try:
-        # Count before deleting
-        count_result = client.table("matches").select("id", count="exact").execute()
-        count_before = count_result.count or 0
+        # Calculate cutoff datetime
+        cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
         
-        # Delete old matches using RPC or raw query
-        # Since we can't use raw SQL directly, we'll fetch and delete
-        result = (
-            client.table("matches")
-            .select("id")
-            .lt("found_at", f"now() - interval '{days} days'")
-            .execute()
-        )
-        old_match_ids = [row["id"] for row in result.data] if result.data else []
+        # Delete old matches directly
+        result = client.table("matches").delete().lt("found_at", cutoff).execute()
         
-        deleted_count = 0
-        for match_id in old_match_ids:
-            delete_result = (
-                client.table("matches")
-                .delete()
-                .eq("id", match_id)
-                .execute()
-            )
-            if delete_result.data:
-                deleted_count += 1
+        # Count deleted rows (supabase returns the deleted rows)
+        deleted_count = len(result.data) if result.data else 0
         
         logger.info(f"[Orbit] Deleted {deleted_count} matches older than {days} days")
         return deleted_count
