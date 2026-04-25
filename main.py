@@ -103,13 +103,13 @@ app.add_middleware(
 
 # ─── Routes ──────────────────────────────────────────────────────────────────────
 
-@app.get("/health", response_model=HealthResponse)
+@app.get("/health")
 async def health():
-    return HealthResponse(
-        status="ok",
-        agent_status="active" if scheduler.running else "stopped",
-        last_run=agent.get_last_run(),
-    )
+    return {
+        "status": "ok", 
+        "agent_status": "active",
+        "last_run": "running"
+    }
 
 
 @app.post("/profile", response_model=ProfileResponse)
