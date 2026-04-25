@@ -155,8 +155,11 @@ async def dismiss_match(match_id: str):
 @app.delete("/matches/clear", response_model=ClearResponse)
 async def clear_matches():
     try:
-        deleted = database.clear_matches()
-        return ClearResponse(success=True, deleted=deleted)
+        deleted_count = database.clear_matches()
+        return ClearResponse(
+            message="All matches cleared",
+            deleted=deleted_count > 0
+        )
     except Exception as e:
         logger.error(f"[Orbit] /matches/clear error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

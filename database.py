@@ -100,5 +100,44 @@ def clear_matches() -> int:
     # Count before deleting
     count_result = client.table("matches").select("id", count="exact").execute()
     count = count_result.count or 0
-    client.table("matches").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+    # Delete all matches by using gt with a timestamp that will match nothing real
+    # Actually, just delete without any filter - this deletes everything
+    result = client.table("matches").delete().neq("id", "").execute()
+    logger.info(f"[Orbit] Cleared {count} matches from database")
     return count
+
+
+def delete_old_matches(days: int = 7) -> int:
+    """Delete matches older than N days. Returns count deleted."""
+    client = get_client()
+    try:
+        # Count before deleting
+        count_result = client.table("matches").select("id", count="exact").execute()
+        count_before = count_result.count or 0
+        
+        # Delete old matches using RPC or raw query
+        # Since we can't use raw SQL directly, we'll fetch and delete
+        result = (
+            client.table("matches")
+            .select("id")
+            .lt("found_at", f"now() - interval '{days} days'")
+            .execute()
+        )
+        old_match_ids = [row["id"] for row in result.data] if result.data else []
+        
+        deleted_count = 0
+        for match_id in old_match_ids:
+            delete_result = (
+                client.table("matches")
+                .delete()
+                .eq("id", match_id)
+                .execute()
+            )
+            if delete_result.data:
+                deleted_count += 1
+        
+        logger.info(f"[Orbit] Deleted {deleted_count} matches older than {days} days")
+        return deleted_count
+    except Exception as e:
+        logger.error(f"[Orbit] Failed to delete old matches: {e}")
+        return 0

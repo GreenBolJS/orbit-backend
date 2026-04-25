@@ -51,8 +51,8 @@ class DismissResponse(BaseModel):
 
 
 class ClearResponse(BaseModel):
-    success: bool
-    deleted: int
+    message: str
+    deleted: bool
 
 
 class ChatSyncRequest(BaseModel):

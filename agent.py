@@ -199,6 +199,11 @@ async def run_pipeline() -> int:
         logger.warning("[Orbit] No profile found — skipping pipeline.")
         return 0
 
+    # 1.5 Delete stale matches (older than 7 days)
+    old_count = database.delete_old_matches(days=7)
+    if old_count > 0:
+        logger.info(f"[Orbit] Cleaned up {old_count} stale matches")
+
     # 2. Generate queries
     queries = await generate_queries(profile)
     if not queries:
@@ -232,6 +237,29 @@ async def run_pipeline() -> int:
         new_results.append(r)
 
     logger.info(f"[Orbit] Found {len(all_results)} results, {len(new_results)} new after dedup")
+
+    # 4.5 If no new results after filtering, try generic fallback search
+    if not new_results:
+        logger.warning("[Orbit] No new results after site-filtered search, trying generic search...")
+        fallback_queries = [
+            f"{' '.join(profile.get('roles', ['job'])[:2])} {profile.get('locations', ['remote'])[0] if profile.get('locations') else 'remote'} internship jobs",
+            f"{' '.join(profile.get('skills', ['developer'])[:2])} job opportunities",
+            f"entry level {profile.get('experience_level', 'internship')} {' '.join(profile.get('locations', ['remote'])[:1] if profile.get('locations') else ['jobs'])}",
+        ]
+        async with httpx.AsyncClient() as client:
+            for fallback_query in fallback_queries:
+                logger.info(f"[Orbit] Fallback search: {fallback_query}")
+                fallback_results = await search_serper(fallback_query, client)
+                for r in fallback_results:
+                    url = r.get("url", "")
+                    if url and url not in existing_urls and url not in seen_urls and is_job_url(url):
+                        seen_urls.add(url)
+                        new_results.append(r)
+                if len(new_results) >= 5:  # Stop if we found enough
+                    break
+        
+        if new_results:
+            logger.info(f"[Orbit] Fallback search found {len(new_results)} new results")
 
     if not new_results:
         last_run = datetime.now(timezone.utc).isoformat()
@@ -337,6 +365,10 @@ async def sync_from_conversation(messages: list[str], source: str) -> dict:
         if not saved:
             logger.error("[Orbit] Failed to save merged profile")
             return {"profile_updated": False}
+        
+        # Clear all existing matches so the pipeline starts fresh with new profile
+        cleared_count = database.clear_matches()
+        logger.info(f"[Orbit] Profile updated — cleared {cleared_count} existing matches to start fresh")
         
         # Trigger pipeline
         new_matches = await run_pipeline()
