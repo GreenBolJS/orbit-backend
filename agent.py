@@ -333,14 +333,38 @@ async def sync_from_conversation(messages: list[str], source: str) -> dict:
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
         )
-        text_response = strip_markdown_json(response.choices[0].message.content)
+        raw_response = response.choices[0].message.content
+        logger.info(f"[Orbit] Raw Groq response: {raw_response}")
+        
+        text_response = strip_markdown_json(raw_response)
+        logger.info(f"[Orbit] Stripped response: {text_response}")
+        
         extracted = json.loads(text_response)
+        logger.info(f"[Orbit] Parsed extracted data: {extracted}")
         
         if "job_related" in extracted and extracted["job_related"] is False:
             return {"profile_updated": False}
         
+        # Ensure extracted fields are lists
+        def ensure_list(value):
+            if isinstance(value, list):
+                return value
+            elif isinstance(value, str):
+                return [item.strip() for item in value.split(",") if item.strip()]
+            else:
+                return []
+        
+        extracted["skills"] = ensure_list(extracted.get("skills", []))
+        extracted["target_roles"] = ensure_list(extracted.get("target_roles", []))
+        extracted["locations"] = ensure_list(extracted.get("locations", []))
+        extracted["companies"] = ensure_list(extracted.get("companies", []))
+        
+        logger.info(f"[Orbit] Processed extracted data: {extracted}")
+        
         # Get existing profile
         existing_profile = database.get_profile()
+        logger.info(f"[Orbit] Existing profile: {existing_profile}")
+        
         if not existing_profile:
             # If no profile exists, create one with extracted data
             merged_profile = {
@@ -360,8 +384,12 @@ async def sync_from_conversation(messages: list[str], source: str) -> dict:
                 "experience_level": extracted.get("experience_level", "") or existing_profile.get("experience_level", ""),
             }
         
+        logger.info(f"[Orbit] Merged profile to save: {merged_profile}")
+        
         # Save merged profile
         saved = database.upsert_profile(merged_profile)
+        logger.info(f"[Orbit] Supabase save result: {saved}")
+        
         if not saved:
             logger.error("[Orbit] Failed to save merged profile")
             return {"profile_updated": False}

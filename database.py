@@ -29,16 +29,21 @@ def upsert_profile(data: dict) -> dict:
     client = get_client()
     # Try to get existing profile first
     existing = client.table("profiles").select("id").limit(1).execute()
+    logger.info(f"[Orbit] Existing profile query result: {existing.data}")
     if existing.data:
         profile_id = existing.data[0]["id"]
+        logger.info(f"[Orbit] Updating profile with id: {profile_id}, data: {data}")
         result = (
             client.table("profiles")
             .update({**data, "updated_at": "now()"})
             .eq("id", profile_id)
             .execute()
         )
+        logger.info(f"[Orbit] Update result: {result}")
     else:
+        logger.info(f"[Orbit] Inserting new profile with data: {data}")
         result = client.table("profiles").insert(data).execute()
+        logger.info(f"[Orbit] Insert result: {result}")
     return result.data[0] if result.data else {}
 
 
