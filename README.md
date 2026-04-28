@@ -1,121 +1,214 @@
-# 🪐 Orbit Backend
+# orbit-backend
 
-A FastAPI-powered job/internship alert agent that uses Gemini AI to find and score job postings relevant to your profile, and notifies you via Telegram.
+FastAPI agentic backend for Orbit — a personal career intelligence agent that monitors job markets and delivers personalized opportunities.
+
+🌐 **API:** [orbit-backend-production-26a0.up.railway.app](https://orbit-backend-production-26a0.up.railway.app/docs)
 
 ---
 
-## How it works
+## The Idea
 
-1. You set up your profile (skills, roles, locations, experience level)
-2. Orbit asks Gemini to generate targeted Google search queries for you
-3. Serper runs those queries and collects job listings
-4. Gemini scores each listing 1–10 for relevance to your profile
-5. Matches above the threshold are saved and (if high-scoring) pushed to your Telegram
+Every day, millions of students and job seekers chat with AI tools like ChatGPT and Claude. They describe their skills, their goals, the kind of work they want. And then — nothing. The conversation ends, the context disappears, and tomorrow they're back to manually refreshing Naukri and LinkedIn.
 
-The pipeline runs automatically every 6 hours (configurable).
+The insight behind Orbit is simple: **your AI conversations already contain everything a job search agent needs to know about you.** The roles you mention. The skills you list. The companies you're curious about. The locations you prefer. It's all there — just locked inside a chat window that forgets everything the moment you close it.
+
+Orbit fixes this. It gives your AI conversations persistent memory, and puts that memory to work.
+
+---
+
+## The Problem With Existing Tools
+
+- **Job boards are passive** — you have to go to them, search, filter, repeat every day
+- **Alerts are generic** — keyword-based, not contextually aware of your actual profile
+- **AI tools are stateless** — ChatGPT doesn't remember what you told it last week
+- **The gap between "I want a job" and "here are relevant jobs" requires manual work every single day**
+
+Orbit closes that gap entirely. Once set up, it requires zero ongoing effort.
+
+---
+
+## How Orbit Thinks Differently
+
+Traditional job alerts:
+```
+User sets keywords → Alert fires on keyword match → User gets flooded with irrelevant results
+```
+
+Orbit:
+```
+User chats naturally with AI about their goals
+        ↓
+Chrome extension passively extracts career intent
+        ↓
+LLM builds a rich profile: roles + skills + locations + level
+        ↓
+Agent generates targeted search queries from that profile
+        ↓
+Each result scored 1-10 with a specific reason why it matches
+        ↓
+Only genuinely relevant matches reach the user
+```
+
+The difference is context. A keyword match for "Python engineer" treats a senior backend role and a fresher ML internship identically. Orbit knows you're a BTech student at IIT Roorkee looking for summer 2026 internships in ML — and scores accordingly.
+
+---
+
+## What This Does
+
+This is the brain of Orbit. It runs a background pipeline every 6 hours that:
+1. Loads your career profile from Supabase
+2. Generates targeted search queries using Groq (Llama 3.3)
+3. Searches 15+ job sites via Serper API
+4. Scores each listing for relevance using LLM
+5. Saves high-score matches to the database
+6. Sends Telegram notifications for the best matches
+
+It also exposes a `/chat-sync` endpoint that the Chrome extension uses to automatically update your profile from AI conversations.
+
+---
+
+## Architecture
+
+```
+┌─────────────────┐     ┌──────────────────┐
+│  Chrome          │    │   Cloudflare     │
+│  Extension       │    │   Pages          │
+│  (content.js)    │    │   (React UI)     │
+└────────┬────────┘     └────────┬─────────┘
+         │                       │
+         │ POST /chat-sync       │ GET /matches
+         │                       │
+         ▼                       ▼
+┌─────────────────────────────────────────┐
+│           orbit-backend                 │
+│           (Railway)                     │
+│                                         │
+│  ┌─────────────┐   ┌─────────────────┐  │
+│  │ APScheduler │   │  /chat-sync     │  │
+│  │ (6hr cron)  │   │  /run-agent     │  │
+│  └──────┬──────┘   └────────┬────────┘  │
+│         │                   │           │
+│         └─────────┬─────────┘           │
+│                   ▼                     │
+│           agent.py pipeline             │
+│    1. Load profile from Supabase        │
+│    2. Generate queries via Groq         │
+│    3. Search via Serper API             │
+│    4. Score results via Groq            │
+│    5. Save to Supabase                  │
+│    6. Notify via Telegram               │
+└─────────────────────────────────────────┘
+         │                   │
+         ▼                   ▼
+┌──────────────┐    ┌──────────────────┐
+│   Supabase   │    │  Telegram Bot    │
+│  PostgreSQL  │    │  Notifications   │
+└──────────────┘    └──────────────────┘
+```
+
+---
+
+## Tech Stack
+
+- **FastAPI** — REST API framework
+- **Groq API** (Llama 3.3 70B) — query generation + relevance scoring
+- **Supabase** (PostgreSQL) — profiles and matches storage
+- **Serper API** — Google search for job listings
+- **Telegram Bot API** — push notifications
+- **APScheduler** — background cron jobs
+- **Railway** — deployment and hosting
 
 ---
 
 ## Setup
 
-### 1. Clone & install
+### 1. Clone and install
 
 ```bash
+git clone https://github.com/GreenBolJS/orbit-backend
 cd orbit-backend
+
 python -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Copy and fill in environment variables
+### 2. Get your API keys
 
-```bash
-cp .env.example .env
+| Key | Where to get it |
+|---|---|
+| `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) → API Keys → Create (free) |
+| `SERPER_API_KEY` | [serper.dev](https://serper.dev) → Sign up → Dashboard (2500 free queries/month) |
+| `SUPABASE_URL` + `SUPABASE_KEY` | [supabase.com](https://supabase.com) → New project → Settings → API |
+| `TELEGRAM_BOT_TOKEN` | Message **@BotFather** on Telegram → `/newbot` → copy token |
+| `TELEGRAM_CHAT_ID` | Message your bot once → open `https://api.telegram.org/bot{TOKEN}/getUpdates` → copy `id` from `chat` |
+
+### 3. Create `.env`
+
+```
+GROQ_API_KEY=
+SERPER_API_KEY=
+SUPABASE_URL=
+SUPABASE_KEY=
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+FRONTEND_URL=http://localhost:8080
+PORT=8000
+AGENT_INTERVAL_HOURS=6
+MIN_SCORE_TO_SAVE=6
+MIN_SCORE_TO_NOTIFY=8
 ```
 
-Open `.env` and fill in all the keys (see sections below for how to get each one).
+### 4. Set up Supabase tables
 
-### 3. Create Supabase tables
+Go to Supabase → SQL Editor → run:
 
-1. Go to [supabase.com](https://supabase.com) and create a free project
-2. Open **SQL Editor → New Query**
-3. Paste the contents of `schema.sql` and click **Run**
-4. Copy your project URL and `anon` key from **Settings → API** into `.env`
+```sql
+create table profiles (
+  id uuid primary key default gen_random_uuid(),
+  skills text[], roles text[], locations text[],
+  companies text[], experience_level text,
+  updated_at timestamptz default now()
+);
 
-### 4. Get a Gemini API key
+create table matches (
+  id uuid primary key default gen_random_uuid(),
+  title text, company text, url text unique,
+  score integer, reason text, query text,
+  dismissed boolean default false,
+  found_at timestamptz default now()
+);
 
-1. Go to [aistudio.google.com](https://aistudio.google.com)
-2. Click **"Get API Key"** → **Create API Key**
-3. Copy it into `GEMINI_API_KEY` in your `.env`
-
-**Free tier limits:** 15 requests/minute, 1 million tokens/day — more than enough for this project.
-
-### 5. Get a Serper API key
-
-1. Go to [serper.dev](https://serper.dev) and sign up
-2. Free tier gives you **2,500 search queries/month**
-3. Copy your API key into `SERPER_API_KEY` in your `.env`
-
-### 6. Create a Telegram bot
-
-1. Open Telegram and search for **@BotFather**
-2. Send `/newbot` and follow the prompts
-3. Copy the bot token into `TELEGRAM_BOT_TOKEN` in your `.env`
-4. Start a conversation with your new bot (send it any message)
-5. Visit `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates` in your browser
-6. Find `"chat": {"id": XXXXXXXX}` — that number is your `TELEGRAM_CHAT_ID`
-
-### 7. Run it
-
-```bash
-uvicorn main:app --reload --port 8000
+create table feedback (
+  id uuid primary key default gen_random_uuid(),
+  match_id uuid references matches(id),
+  action text,
+  created_at timestamptz default now()
+);
 ```
 
-Visit [http://localhost:8000/docs](http://localhost:8000/docs) for the interactive API docs.
+### 5. Start the server
+
+```bash
+uvicorn main:app --reload
+```
+
+Open `http://localhost:8000/docs` to test all endpoints interactively.
 
 ---
 
-## API Reference
+## API Endpoints
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/health` | Health check + last run time |
-| `POST` | `/profile` | Save/update your job profile |
-| `GET` | `/profile` | Get current profile |
-| `GET` | `/matches` | List all non-dismissed matches |
-| `GET` | `/matches?min_score=8` | Filter by minimum score |
-| `POST` | `/matches/dismiss/{id}` | Dismiss a match |
-| `DELETE` | `/matches/clear` | Delete all matches |
-| `POST` | `/run-agent` | Manually trigger the pipeline |
-
----
-
-## Configuration
-
-All config lives in `.env`:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `AGENT_INTERVAL_HOURS` | `6` | How often the pipeline runs |
-| `MIN_SCORE_TO_SAVE` | `6` | Minimum score to save a match |
-| `MIN_SCORE_TO_NOTIFY` | `8` | Minimum score to send Telegram alert |
-| `FRONTEND_URL` | `http://localhost:5173` | Your frontend URL (for CORS) |
-
----
-
-## Deploy to Railway
-
-1. Push this folder to a GitHub repo
-2. Go to [railway.app](https://railway.app) → **New Project → Deploy from GitHub**
-3. Select your repo
-4. Add all environment variables from `.env` in the **Variables** tab
-5. Railway will auto-detect Python and deploy
-
-Railway will set a `PORT` env var automatically — uvicorn reads it via the start command. Add this to Railway's **Start Command**:
-
-```
-uvicorn main:app --host 0.0.0.0 --port $PORT
-```
+|---|---|---|
+| POST | `/profile` | Save user profile |
+| GET | `/profile` | Get current profile |
+| GET | `/matches` | Get all job matches |
+| POST | `/matches/dismiss/{id}` | Dismiss a match |
+| DELETE | `/matches/clear` | Clear all matches |
+| POST | `/run-agent` | Manually trigger pipeline |
+| POST | `/chat-sync` | Sync from AI conversation |
+| GET | `/health` | Health check |
 
 ---
 
@@ -123,25 +216,38 @@ uvicorn main:app --host 0.0.0.0 --port $PORT
 
 ```
 orbit-backend/
-├── main.py          # FastAPI app, CORS, scheduler, all routes
-├── agent.py         # Core pipeline: query → search → score → save → notify
+├── main.py          # FastAPI app + all endpoints
+├── agent.py         # Core pipeline logic
 ├── database.py      # Supabase CRUD helpers
-├── notifier.py      # Telegram message sender
-├── schemas.py       # Pydantic v2 request/response models
-├── schema.sql       # SQL to create Supabase tables
-├── .env.example     # All required environment variables
+├── notifier.py      # Telegram notifications
+├── schemas.py       # Pydantic models
 ├── requirements.txt
-└── README.md
+└── runtime.txt      # Python version for Railway
 ```
 
 ---
 
-## Troubleshooting
+## Deployment
 
-**Pipeline finds 0 results:** Check your Serper API key is valid and you have remaining quota.
+Deployed on Railway. Auto-deploys on push to main branch.
 
-**Gemini errors:** Make sure `GEMINI_API_KEY` is set. If you hit rate limits, increase the sleep delay in `agent.py` (`asyncio.sleep(0.3)` → `asyncio.sleep(1.0)`).
+To deploy your own instance:
+1. Push this repo to GitHub
+2. Go to [railway.app](https://railway.app) → New Project → Deploy from GitHub
+3. Add all environment variables from your `.env`
+4. Add `PORT=8000` in Railway variables
+5. Railway handles the rest — generates a public URL automatically
 
-**Telegram not sending:** Double-check the bot token and chat ID. Make sure you've sent the bot at least one message first.
+---
 
-**Supabase errors:** Confirm you ran the `schema.sql` and that your `SUPABASE_URL` doesn't have a trailing slash.
+## Part of Orbit
+
+| Repo | Description |
+|---|---|
+| **orbit-backend** | This repo — FastAPI pipeline |
+| [orbit-your-career-compass](https://github.com/GreenBolJS/orbit-your-career-compass) | React dashboard |
+| [orbit_sync_extension](https://github.com/GreenBolJS/orbit_sync_extension) | Chrome extension |
+
+---
+
+**Daksh Chawla** — BTech, IIT Roorkee · [GitHub](https://github.com/GreenBolJS)
