@@ -155,6 +155,8 @@ async def score_job(result: dict, profile: dict) -> dict | None:
         "- company_name: extract company name from title/snippet/URL\n"
         "- is_valid_listing: true only if URL points to a specific "
         "job listing, not a search page or homepage\n"
+        "- applications_open: true only if the job posting indicates that "
+        "applications are still being accepted (not closed, expired, or filled)\n"
         "No markdown, no backticks, no explanation. Just the JSON object.\n\n"
         f"Profile: {json.dumps(profile)}\n"
         f"Job Title: {result['title']}\n"
@@ -169,7 +171,7 @@ async def score_job(result: dict, profile: dict) -> dict | None:
         )
         text = strip_markdown_json(response.choices[0].message.content)
         scored = json.loads(text)
-        if "score" in scored and "reason" in scored and "exact_title" in scored and "company_name" in scored and "is_valid_listing" in scored:
+        if "score" in scored and "reason" in scored and "exact_title" in scored and "company_name" in scored and "is_valid_listing" in scored and "applications_open" in scored:
             return {
                 **result,
                 "score": int(scored["score"]),
@@ -177,6 +179,7 @@ async def score_job(result: dict, profile: dict) -> dict | None:
                 "exact_title": str(scored["exact_title"]),
                 "company_name": str(scored["company_name"]),
                 "is_valid_listing": bool(scored["is_valid_listing"]),
+                "applications_open": bool(scored["applications_open"]),
             }
     except Exception as e:
         logger.warning(f"[Orbit] Failed to score job '{result.get('title', '')}': {e}")
@@ -274,7 +277,7 @@ async def run_pipeline() -> int:
         # Small delay to be kind to Groq rate limits
         await asyncio.sleep(0.3)
 
-    above_threshold = [j for j in scored_jobs if j["score"] >= MIN_SCORE_TO_SAVE and j.get("is_valid_listing", False)]
+    above_threshold = [j for j in scored_jobs if j["score"] >= MIN_SCORE_TO_SAVE and j.get("is_valid_listing", False) and j.get("applications_open", False)]
     logger.info(f"[Orbit] Scored {len(scored_jobs)} jobs, {len(above_threshold)} above threshold")
 
     # 6. Save
